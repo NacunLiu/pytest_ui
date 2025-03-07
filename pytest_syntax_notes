@@ -1,0 +1,63 @@
+Pytest的使用无非就是 fixture, 以及运行使用pytest -v module_name.py
+pytest不需要将所有的测试脚本打包也不像unittest那样继承TestCase类, pytest推荐直接使用测试函数它比类更加灵活
+pytest首先在tests/conftest.py中开始运行,创建所有的fixture,之后进入tests/开始运行测试脚本
+如果脚本中的测试用例是函数级别的,那么在conftest.py中使用yield driver,就相当于是 return driver 之后在测试函数中可以直接使用driver, fixture_name当实参传递进去即可
+如果脚本中的测试用例是类级别的, 那么就不需要在conftest.py中传递yeild, 而是使用request.cls.driver = driver在测试脚本的类前面显示调用fixture @pytest.mark.usefixture(fixture_name),
+然后pytest就将driver绑定为测试脚本的类属性了后续可以直接使用
+
+fixture的用法:
+fixture总共有四个级别: 
+session:这个项目级别,只会在整个项目开始和结束的时候运行一次,不需要显示的调用,pytest会自动运行
+module: 这个只有在整个模块开始和结束的时候执行, 需要使用@pytest.mark.usefixtures('fixture_name')显示调用
+class: 在类的开始和结束运行一次,需要显示调用
+function:每个函数运行一次,需要显式调用
+在调用的时候要对fixture 名字加引号,pytest会根据字符串去自动找对应fixture
+
+fixture直接可以互相调用,后面的fixture可以直接调用前面fixture的内容
+
+fixture的使用例子如下:
+# conftest.py
+import pytest
+from selenium import webdriver
+
+@pytest.fixture(scope="session")
+def browser():
+    """会话级别（session），整个 Pytest 只运行 1 次"""
+    print("\n[SETUP] 启动浏览器")
+    driver = webdriver.Chrome()
+    yield driver
+    print("\n[TEARDOWN] 关闭浏览器")
+    driver.quit()
+
+@pytest.fixture(scope="module")
+def open_website(browser):
+    """模块级（module），每个 `test_xxx.py` 执行 1 次，依赖 browser"""
+    print("\n[SETUP] 打开网站")
+    browser.get("https://example.com")
+    yield browser  # ✅ 返回 browser，后面的 `fixture` 可以使用
+    print("\n[TEARDOWN] 关闭网站")
+
+@pytest.fixture(scope="class")
+def setup_class(open_website):  # ✅ 这里 setup_class 依赖 open_website
+    """类级（class），每个 TestClass 运行 1 次"""
+    print("\n[SETUP] 运行 class 级别 setup")
+    yield
+    print("\n[TEARDOWN] 结束 class 级别 setup")
+
+
+
+调用:
+
+import pytest
+
+@pytest.mark.usefixtures("setup_class")
+class TestExample:
+    def test_case_1(self):
+        print("🔹 运行 test_case_1")
+
+    def test_case_2(self):
+        print("🔹 运行 test_case_2")
+
+
+在调用的时候,pytest会自动根据依赖关系从外到内依次调用,在函数执行结束之后会再依次从内向外执行fixture中yield之后的语句
+
